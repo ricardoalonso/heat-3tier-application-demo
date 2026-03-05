@@ -1,0 +1,40 @@
+resources:
+  app_server:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: server_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+      - network: { get_param: private_network_id }
+      security_groups:
+      - { get_param: security_group }
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash -v
+            yum groupinstall -y 'Development Tools'
+            yum module install -y nodejs/development
+            yum install -y wget
+            wget http://materials.example.com/webtracker.tar.gz
+            tar -xz webtracker.tar.gz
+            chmod +x webtracker.js
+            ./webtracker.js &
+
+  Pool_Member:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: { get_param: pool_name }
+      address: { get_param: [app_server, first_address]}
+      protocol_port: 80
+
+outputs:
+  app_private_ip:
+    description: Private IP address of the App Instance
+    value: { get_attr: [app_server, first_address] }
+  
+  lb_member:
+    description: LoadBalancer member details
+    value: { get_attr: [Pool_Member, show] }

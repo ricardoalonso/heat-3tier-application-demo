@@ -1,0 +1,130 @@
+heat_template_version: 2016-10-14
+description:
+  This HOT template defines the 3-tier web application stack for the application-tracker deployment.
+  This template calls multiple nested templates which actually do the majority of the work.
+  This file calls the required yaml files in a ./lib subdirectory
+  REQUIRED YAML FILES:
+    setup_net_sg.yaml, heat_app_tier.yaml, heat_sql_tier.yaml, heat_web_tier.yaml
+  REQUIRED PARAMETERS:
+    key_name, flavor, image, public_net_id
+  OPTIONAL PARAMETERS:
+    db_server_name, app_server_name, web_server_name, dns_nameserver
+
+parameters:
+  key_name:
+    type: string
+    description: Name of an existing key pair to use for the instance
+    default: example-keypair
+    constraints:
+    - custom_constraint: nova.keypair
+
+  flavor:
+    type: string
+    description: Flavor for the instance to be created
+    default: default
+    constraints:
+    - custom_constraint: nova.flavor
+
+  image:
+    type: string
+    description: Image ID or image name to use for the instance
+    default: rhel8
+    constraints:
+    - custom_constraint: glance.image
+
+  public_network_id:
+    type: string
+    description: ID of public network for which floating IP addresses will be
+    allocated
+    default: ef95203b-7c9f-46c0-b328-e51aa7729798
+
+  private_network_id:
+    type: string
+    description: ID of private network into which instances get deployed
+    default: 8799e43b-2848-4772-8c4c-c6545e54db19
+
+  db_server_name:
+    type: string
+    description: Name of the database instances
+    default: db_server
+
+  app_server_name:
+    type: string
+    description: Name of the application instances
+    default: app_server
+
+  web_server_name:
+    type: string
+    description: Name of the web instances
+    default: app_server
+
+  dns_nameserver:
+    type: comma_delimited_list
+    description: The IP address of a DNS nameserver in list format
+    default: 8.8.8.8,8.8.4.4
+    
+resources:
+  network_setup:
+    type: lib/setup_net_sg.yaml
+    properties:
+      public_network_id: { get_param: public_network_id }
+      dns_nameserver: { get_param: dns_nameserver }
+
+  launch_db_server:
+    type: lib/heat_sql_tier.yaml
+    properties:
+      key_name: { get_param: key_name }
+      server_name: { get_param: db_server_name }
+      instance_flavor: { get_param: flavor }
+      image_id: { get_param: image_id }
+      private_network_id: { get_param: private_network_id }
+      security_group: { get_param: [network_setup, db_security_group_id] }
+
+  app_server_resource_group:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 2
+      resource_def: 2
+        type: lib/heat_app_tier.yaml
+        properties:
+          key_name:
+            get_param: key_name
+          server_name:
+            get_param: app_server_name
+          instance_flavor:
+            get_param: flavor
+          image_id:
+            get_param: image_id
+          private_network_id: {get_attr: [network_setup, private_network_id]}
+          security_group: {get_attr: [network_setup, app_security_group_id]}
+          pool_name: {get_attr: [network_setup, app_lbass_pool_name]}
+          db_server_ip: {get_attr: [launch_db_server, instance_ip]}
+
+  web_server_resource_group:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: 2
+      resource_def: 2
+        type: lib/heat_web_tier.yaml
+        properties:
+          key_name:
+            get_param: key_name
+          server_name:
+            get_param: web_server_name
+          instance_flavor:
+            get_param: flavor
+          image_id:
+            get_param: image_id
+          private_network_id: {get_attr: [network_setup, private_network_id]}
+          app_lbaas_vip: {get_attr: [network_setup, app_lbaas_ip]}
+          security_group: {get_attr: [network_setup, web_security_group_id]}
+          pool_name: {get_attr: [network_setup, web_lbass_pool_name]}
+          
+outputs:
+  web_lbaas_ip:
+    descrption: Floating IP assigned to the web loadbalancer
+    value: { get_attr: [ network_setup, web_lbaas_ip ] }
+  
+  app_lbaas_ip:
+    descrption: Floating IP assigned to the app loadbalancer
+    value: { get_attr: [ network_setup, app_lbaas_ip ] }

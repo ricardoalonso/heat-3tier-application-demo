@@ -1,0 +1,158 @@
+resources:
+  private_network_subnet:
+    type: OS::Neutron::Net
+    properties:
+      cidr: 192.168.100.0/24
+      gateway_ip: 192.168.100.1
+      allocation_pools: [{ "start": 192.168.100.10, "end": 192.168.100.100 }]
+      name: private_subnet
+      dns_nameserver: { get_param: dns_nameserver }
+      enable_dhcp: true
+
+  public_router:
+    type: OS::Neutron::Router
+    properties:
+      name: public_router
+      external_gateway_info:
+      network: { get_param: public_network_id }
+
+  public_router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: public_router }
+      subnet: { get_resource: private_network_subnet }
+
+  web_tier_loadbalancer:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      protocol_port: 80
+      pool_id: { get_resource: web_server_pool }
+
+  web_tier_monitor:
+    type: OS::Neutron::HealthMonitor
+    properties:
+      type: TCP
+      delay: 5
+      max_retries: 5
+      timeout: 5
+
+  web_server_pool:
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      monitors: [{ get_resource: web_tier_monitor }]
+      subnet: { get_resource: private_network_subnet }
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+
+  web_vip_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups: [{ get_resource: web_security_group }]
+      fixed_ips:
+        subnet_id: { get_resource: private_network_subnet }
+
+  web_network_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_resource: public_network_id }
+      port_id: { get_resource: web_vip_port }
+
+  association:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floating_id: { get_resource: web_network_floating_ip }
+      port_id: { get_resource: web_vip_port }
+
+  app_tier_loadbalancer:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      protocol_port: 80
+      pool_id: { get_resource: app_server_pool }
+
+  app_tier_monitor:
+    type: OS::Neutron::HealthMonitor
+    properties:
+      type: TCP
+      delay: 5
+      max_retries: 5
+      timeout: 5
+
+  app_server_pool:
+    type: OS::Neutron::Pool
+    properties:
+      protocol: HTTP
+      monitors: [{ get_resource: app_tier_monitor }]
+      subnet: { get_resource: private_network_subnet }
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: 80
+
+  web_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: A application specific security group that passes ports 22 and  80
+      name: workload_web_security_group
+      rules:
+      - protocol_port: tcp
+        port_range_min: 22
+        port_range_max: 22
+      - protocol_port: tcp
+        port_range_min: 80
+        port_range_max: 80
+
+  app_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: A application specific security group that passes ports 22, 80 and 3306
+      name: workload_app_security_group
+      rules:
+      - protocol_port: tcp
+        port_range_min: 22
+        port_range_max: 22
+      - protocol_port: tcp
+        port_range_min: 80
+        port_range_max: 80
+      - protocol_port: tcp
+        port_range_min: 3306
+        port_range_max: 3306
+
+  db_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: A database specific security group that passes ports 22 and 3306
+      name: workload_db_security_group
+      rules:
+      - protocol_port: tcp
+        port_range_min: 22
+        port_range_max: 22
+      - protocol_port: tcp
+        port_range_min: 3306
+        port_range_max: 3306
+
+output:
+  web_security_group:
+    description: web security group ID
+    value: {get_resource: web_security_group}
+  
+  app_security_group:
+    description: app security group ID
+    value: {get_resource: app_security_group}
+  
+  db_security_group:
+    description: db security group ID
+    value: {get_resource: web_security_group}
+  
+  web_lbaas_pool_name:
+    description: Name of Web LBaaS Pool
+    value: {get_resource: web_server_pool}
+  
+  app_lbaas_pool_name:
+    description: Name of App LBaaS Pool
+    value: {get_resource: app_server_pool}
+
+  web_lbaas_ip:
+    description: Public floating IP assigned to web LBaaS
+    value: { get_attr: [ Web_Network_Floating_IP, floating_ip_address ] }
