@@ -1,4 +1,4 @@
-heat_template_version: 2020-07-26
+heat_template_version: 2018-08-31
 
 description: >
   This is a nested Heat used by the 3-Tier Architecture Workload reference document

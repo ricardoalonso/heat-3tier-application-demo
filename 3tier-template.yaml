@@ -1,5 +1,5 @@
 heat_template_version: 2016-10-14
-description:
+description: |
   This HOT template defines the 3-tier web application stack for the application-tracker deployment.
   This template calls multiple nested templates which actually do the majority of the work.
   This file calls the required yaml files in a ./lib subdirectory
@@ -34,8 +34,7 @@ parameters:
 
   public_network_id:
     type: string
-    description: ID of public network for which floating IP addresses will be
-    allocated
+    description: ID of public network for which floating IP addresses will be allocated
     default: ef95203b-7c9f-46c0-b328-e51aa7729798
 
   private_network_id:
@@ -84,7 +83,7 @@ resources:
     type: OS::Heat::ResourceGroup
     properties:
       count: 2
-      resource_def: 2
+      resource_def:
         type: lib/heat_app_tier.yaml
         properties:
           key_name:
@@ -104,7 +103,7 @@ resources:
     type: OS::Heat::ResourceGroup
     properties:
       count: 2
-      resource_def: 2
+      resource_def:
         type: lib/heat_web_tier.yaml
         properties:
           key_name:
